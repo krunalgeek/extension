@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <title>Proctor Helper</title>
+    <style>
+      body { font: 13px/1.4 system-ui, sans-serif; padding: 12px; width: 320px; }
+      label { display:block; margin: 8px 0 4px; }
+      input[type=text] { width:100%; }
+      .row { display:flex; gap:8px; }
+      button { padding: 6px 10px; }
+      .muted { color:#666; }
+    </style>
+  </head>
+  <body>
+    <h3>Proctor Helper</h3>
+    <div id="status" class="muted">Loading…</div>
+
+    <label>Backend Base URL</label>
+    <input id="baseUrl" type="text" placeholder="http://localhost:3000"/>
+
+    <label>Assessment ID</label>
+    <input id="aid" type="text" placeholder="demo-assessment"/>
+
+    <label>Candidate ID</label>
+    <input id="cid" type="text" placeholder="demo-candidate"/>
+
+    <div class="row" style="margin-top:8px">
+      <button id="save">Save</button>
+      <button id="probe">Probe</button>
+    </div>
+
+    <script type="module">
+      const status = document.getElementById('status');
+      const baseUrl = document.getElementById('baseUrl');
+      const aid = document.getElementById('aid');
+      const cid = document.getElementById('cid');
+
+      chrome.storage.local.get("CONFIG").then(({CONFIG})=>{
+        if (CONFIG) {
+          baseUrl.value = CONFIG.baseUrl || "";
+          aid.value = CONFIG.assessmentId || "";
+          cid.value = CONFIG.candidateId || "";
+        }
+        status.textContent = "Ready.";
+      });
+
+      document.getElementById('save').onclick = async () => {
+        const payload = {
+          type: "SET_CONFIG",
+          baseUrl: baseUrl.value.trim(),
+          assessmentId: aid.value.trim(),
+          candidateId: cid.value.trim()
+        };
+        const res = await chrome.runtime.sendMessage(payload);
+        status.textContent = res?.ok ? "Saved." : "Save failed.";
+      };
+
+      document.getElementById('probe').onclick = async () => {
+        const res = await chrome.runtime.sendMessage({ type: "GET_STATUS" });
+        status.textContent = `CapturedTabs=${res?.capturedCount ?? "?"}, Focus=${res?.windowFocused ? "yes":"no"}`;
+      };
+    </script>
+  </body>
+</html>
