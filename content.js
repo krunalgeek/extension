@@ -36,4 +36,25 @@
       window.postMessage({ target: "proctor-page", type: "GET_STATUS_RES", payload: res }, "*");
     }
   }, false);
+
+  // Monitor fullscreen changes
+  let isFullscreen = !!document.fullscreenElement;
+  
+  document.addEventListener('fullscreenchange', async () => {
+    const nowFullscreen = !!document.fullscreenElement;
+    if (nowFullscreen !== isFullscreen) {
+      isFullscreen = nowFullscreen;
+      await EXT_MSG('FULLSCREEN_CHANGE', { fullscreen: isFullscreen });
+    }
+  });
+
+  // Send initial fullscreen state
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      EXT_MSG('FULLSCREEN_CHANGE', { fullscreen: isFullscreen, initial: true });
+    });
+  } else {
+    EXT_MSG('FULLSCREEN_CHANGE', { fullscreen: isFullscreen, initial: true });
+  }
 })();
+

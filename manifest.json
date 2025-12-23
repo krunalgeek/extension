@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Exam Proctor Helper",
-  "version": "1.0.0",
-  "description": "Hardens proctoring by monitoring focus, tab switches, display topology, and Chrome captures.",
+  "version": "1.1.0",
+  "description": "Hardens proctoring by monitoring focus, tab switches, display topology, fullscreen, and Chrome captures.",
   "permissions": [
     "tabs",
     "tabCapture",
@@ -29,11 +29,5 @@
       "js": ["content.js"],
       "run_at": "document_start"
     }
-  ],
-  "icons": {
-    "16": "icons/16.png",
-    "48": "icons/48.png",
-    "128": "icons/128.png"
-  },
-  "options_page": "options.html"
+  ]
 }

@@ -2,21 +2,28 @@
 let CONFIG = {
   baseUrl: "http://localhost:3000",
   assessmentId: "",
-  candidateId: ""
+  candidateId: "",
+  submissionId: "",
+  isActive: false
 };
 
 // ------------- Utilities -------------
 async function postEvent(type, detail = {}) {
-  if (!CONFIG.assessmentId || !CONFIG.candidateId) return;
+  // Only send events when assessment is active
+  if (!CONFIG.isActive || !CONFIG.assessmentId || !CONFIG.candidateId || !CONFIG.submissionId) return;
+  
   try {
-    await fetch(`${CONFIG.baseUrl}/event`, {
+    await fetch(`${CONFIG.baseUrl}/api/proctor/event`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        submissionId: CONFIG.submissionId,
+        assessmentId: CONFIG.assessmentId,
+        candidateId: CONFIG.candidateId,
         type,
         detail: { ...detail, _src: "ext" },
-        assessmentId: CONFIG.assessmentId,
-        candidateId: CONFIG.candidateId
+        source: "CLIENT",
+        timestamp: Date.now()
       })
     });
   } catch (e) {
@@ -45,9 +52,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResp) => {
         CONFIG = {
           baseUrl: msg.baseUrl || CONFIG.baseUrl,
           assessmentId: msg.assessmentId || "",
-          candidateId: msg.candidateId || ""
+          candidateId: msg.candidateId || "",
+          submissionId: msg.submissionId || "",
+          isActive: !!(msg.assessmentId && msg.candidateId && msg.submissionId)
         };
         await chrome.storage.local.set({ CONFIG });
+        
+        // Start or stop monitoring based on isActive
+        if (CONFIG.isActive && !probeTimer) {
+          console.log('[Extension] Assessment started, enabling monitoring');
+          probeLoop();
+        } else if (!CONFIG.isActive && probeTimer) {
+          console.log('[Extension] Assessment ended, disabling monitoring');
+          clearTimeout(probeTimer);
+          probeTimer = null;
+        }
+        
         sendResp({ ok: true });
         break;
 
@@ -90,6 +110,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResp) => {
             windowFocused: win.focused
           });
         }
+        break;
+
+      case "FULLSCREEN_CHANGE":
+        postEvent("FULLSCREEN_CHANGE", { 
+          fullscreen: msg.fullscreen, 
+          initial: msg.initial || false 
+        });
+        sendResp({ ok: true });
         break;
 
       default:
@@ -135,23 +163,37 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 let probeTimer = null;
 
 async function probeLoop() {
+  // Only run when assessment is active
+  if (!CONFIG.isActive) {
+    probeTimer = null;
+    return;
+  }
+  
   try {
     // 1) Other captured tabs in Chrome?
     const caps = await chrome.tabCapture.getCapturedTabs();
     if ((caps?.length || 0) > 1) {
       postEvent("SECOND_DISPLAY_SUSPECTED", { reason: "multiple_tab_captures", count: caps.length });
-      postEvent("SCREEN_SHARE_STARTED", { otherCaptures: caps.length });
     }
 
-    // 2) We cannot see OS-level shares, but we can keep a heartbeat so you know the ext is alive.
-    postEvent("AUDIO_STATS", { ext_heartbeat: true }); // harmless periodic ping
+    // 2) Check if screen share is still active
+    const win = await chrome.windows.getCurrent({ populate: true });
+    if (win.focused) {
+      postEvent("HEARTBEAT", { timestamp: Date.now() });
+    }
 
   } catch (e) {
     // ignore
   } finally {
-    probeTimer = setTimeout(probeLoop, 5000);
+    // Only continue loop if assessment is still active
+    if (CONFIG.isActive) {
+      probeTimer = setTimeout(probeLoop, 10000); // Every 10 seconds
+    } else {
+      probeTimer = null;
+    }
   }
 }
 
-chrome.runtime.onStartup.addListener(probeLoop);
-probeLoop();
+// Don't auto-start probe loop on startup - wait for SET_CONFIG with active assessment
+// chrome.runtime.onStartup.addListener(probeLoop);
+// probeLoop();

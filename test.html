@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extension Test Page</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 1200px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      border-bottom: 3px solid #4CAF50;
+      padding-bottom: 10px;
+    }
+    .section {
+      margin: 20px 0;
+      padding: 15px;
+      background: #f9f9f9;
+      border-left: 4px solid #2196F3;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      margin: 5px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    button:active {
+      transform: scale(0.98);
+    }
+    .status {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-weight: bold;
+      margin-left: 10px;
+    }
+    .status.connected {
+      background: #4CAF50;
+      color: white;
+    }
+    .status.disconnected {
+      background: #f44336;
+      color: white;
+    }
+    .output {
+      background: #263238;
+      color: #aed581;
+      padding: 15px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      max-height: 400px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .clear-btn {
+      background: #ff9800;
+    }
+    .clear-btn:hover {
+      background: #fb8c00;
+    }
+    .instructions {
+      background: #e3f2fd;
+      border-left: 4px solid #2196F3;
+      padding: 15px;
+      margin: 20px 0;
+    }
+    .instructions h3 {
+      margin-top: 0;
+      color: #1976D2;
+    }
+    .test-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+      margin: 15px 0;
+    }
+    .fullscreen-test {
+      padding: 20px;
+      background: #fff3e0;
+      border-left: 4px solid #ff9800;
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🛡️ Exam Proctor Helper Extension Test</h1>
+    
+    <div class="section">
+      <strong>Extension Status:</strong>
+      <span id="status" class="status disconnected">Checking...</span>
+      <div id="config-info" style="margin-top: 10px; font-size: 13px; color: #666;"></div>
+    </div>
+
+    <div class="instructions">
+      <h3>📋 How to Test</h3>
+      <ol>
+        <li>Ensure the extension is loaded in Chrome (see README.md)</li>
+        <li>Click "Test Ping" to verify extension is installed</li>
+        <li>Click "Configure Extension" to set test configuration</li>
+        <li>Click other test buttons to verify functionality</li>
+        <li>Try manual triggers (switch tabs, toggle fullscreen, etc.)</li>
+        <li>Check output console below for responses</li>
+      </ol>
+    </div>
+
+    <div class="section">
+      <h3>🧪 Automated Tests</h3>
+      <div class="test-grid">
+        <button onclick="testPing()">🔍 Test Ping</button>
+        <button onclick="testConfig()">⚙️ Configure Extension</button>
+        <button onclick="testStatus()">📊 Get Status</button>
+        <button onclick="testStartCapture()">📹 Start Capture</button>
+        <button onclick="testStopCapture()">⏹️ Stop Capture</button>
+      </div>
+    </div>
+
+    <div class="fullscreen-test">
+      <h3>🖥️ Fullscreen Test (v1.1.0)</h3>
+      <p>Test the new fullscreen detection feature:</p>
+      <button onclick="enterFullscreen()">Enter Fullscreen (F11)</button>
+      <button onclick="exitFullscreen()">Exit Fullscreen (ESC)</button>
+      <p style="margin-top: 10px; font-size: 13px; color: #666;">
+        ℹ️ Watch the output console for FULLSCREEN_CHANGE events
+      </p>
+    </div>
+
+    <div class="section">
+      <h3>🎯 Manual Triggers</h3>
+      <p style="font-size: 14px; margin-bottom: 15px;">Try these actions and watch for events:</p>
+      <ul style="font-size: 14px;">
+        <li><strong>Tab Switch:</strong> Open a new tab, then switch back → Should log KEY_SHORTCUT</li>
+        <li><strong>Window Blur:</strong> Alt+Tab to another app → Should log VISIBILITY_HIDDEN</li>
+        <li><strong>Window Focus:</strong> Return to Chrome → Should log FOCUS_RETURN</li>
+        <li><strong>Fullscreen:</strong> Press F11 → Should log FULLSCREEN_CHANGE (fullscreen: true)</li>
+        <li><strong>Exit Fullscreen:</strong> Press ESC or F11 → Should log FULLSCREEN_CHANGE (fullscreen: false)</li>
+        <li><strong>Navigate Away:</strong> Go to google.com, then back → Should log TAB_BLUR</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h3>📤 Output Console</h3>
+      <button class="clear-btn" onclick="clearOutput()">Clear Output</button>
+      <div id="output" class="output">Waiting for messages...\n</div>
+    </div>
+  </div>
+
+  <script>
+    const output = document.getElementById('output');
+    const statusEl = document.getElementById('status');
+    const configInfo = document.getElementById('config-info');
+    let extensionConnected = false;
+
+    // Log to output console
+    function log(message, data = null) {
+      const timestamp = new Date().toLocaleTimeString();
+      let logMsg = `[${timestamp}] ${message}`;
+      if (data) {
+        logMsg += '\n' + JSON.stringify(data, null, 2);
+      }
+      output.textContent += logMsg + '\n\n';
+      output.scrollTop = output.scrollHeight;
+    }
+
+    // Clear output
+    function clearOutput() {
+      output.textContent = 'Output cleared.\n\n';
+    }
+
+    // Update status indicator
+    function updateStatus(connected, config = null) {
+      extensionConnected = connected;
+      if (connected) {
+        statusEl.textContent = 'Connected ✓';
+        statusEl.className = 'status connected';
+        if (config) {
+          configInfo.innerHTML = `
+            <strong>Configuration:</strong><br>
+            • Base URL: ${config.baseUrl || 'Not set'}<br>
+            • Assessment ID: ${config.assessmentId || 'Not set'}<br>
+            • Candidate ID: ${config.candidateId || 'Not set'}
+          `;
+        }
+      } else {
+        statusEl.textContent = 'Disconnected ✗';
+        statusEl.className = 'status disconnected';
+        configInfo.innerHTML = '<em style="color: #f44336;">Extension not detected. Please load the extension.</em>';
+      }
+    }
+
+    // Listen for all messages from extension
+    window.addEventListener('message', (ev) => {
+      if (ev.data.target === 'proctor-page') {
+        log(`📩 Received: ${ev.data.type}`, ev.data.payload);
+
+        // Handle specific responses
+        if (ev.data.type === 'PING_RES') {
+          updateStatus(ev.data.payload.ok, ev.data.payload.config);
+        } else if (ev.data.type === 'SET_CONFIG_RES') {
+          if (ev.data.payload.ok) {
+            log('✅ Configuration saved successfully');
+          }
+        } else if (ev.data.type === 'GET_STATUS_RES') {
+          const s = ev.data.payload;
+          log(`📊 Status Update:
+- Captured Tabs: ${s.capturedCount}
+- Active URL: ${s.activeUrl}
+- Window Focused: ${s.windowFocused}`);
+        } else if (ev.data.type === 'START_CAPTURE_RES') {
+          if (ev.data.payload.ok) {
+            log('✅ Screen capture started. StreamID: ' + ev.data.payload.streamId);
+          } else {
+            log('❌ Screen capture failed or cancelled');
+          }
+        }
+      }
+    });
+
+    // Test functions
+    function testPing() {
+      log('🔍 Sending PING...');
+      window.postMessage({ target: 'proctor-ext', type: 'PING' }, '*');
+      
+      // Timeout check
+      setTimeout(() => {
+        if (!extensionConnected) {
+          updateStatus(false);
+          log('❌ No response from extension. Is it loaded?');
+        }
+      }, 2000);
+    }
+
+    function testConfig() {
+      log('⚙️ Configuring extension...');
+      window.postMessage({
+        target: 'proctor-ext',
+        type: 'SET_CONFIG',
+        payload: {
+          baseUrl: 'http://localhost:3000',
+          assessmentId: 'test-assessment-123',
+          candidateId: 'test-candidate-456'
+        }
+      }, '*');
+    }
+
+    function testStatus() {
+      log('📊 Requesting status...');
+      window.postMessage({ target: 'proctor-ext', type: 'GET_STATUS' }, '*');
+    }
+
+    function testStartCapture() {
+      log('📹 Requesting screen capture...');
+      window.postMessage({ target: 'proctor-ext', type: 'START_CAPTURE' }, '*');
+    }
+
+    function testStopCapture() {
+      log('⏹️ Stopping capture...');
+      window.postMessage({ target: 'proctor-ext', type: 'STOP_CAPTURE' }, '*');
+    }
+
+    function enterFullscreen() {
+      log('🖥️ Entering fullscreen...');
+      document.documentElement.requestFullscreen().then(() => {
+        log('✅ Fullscreen entered');
+      }).catch(err => {
+        log('❌ Fullscreen failed: ' + err.message);
+      });
+    }
+
+    function exitFullscreen() {
+      if (document.fullscreenElement) {
+        log('🖥️ Exiting fullscreen...');
+        document.exitFullscreen().then(() => {
+          log('✅ Fullscreen exited');
+        }).catch(err => {
+          log('❌ Exit fullscreen failed: ' + err.message);
+        });
+      } else {
+        log('ℹ️ Not in fullscreen mode');
+      }
+    }
+
+    // Auto-ping on load
+    window.addEventListener('DOMContentLoaded', () => {
+      log('🚀 Test page loaded. Auto-pinging extension...');
+      setTimeout(testPing, 500);
+    });
+
+    // Monitor fullscreen changes
+    document.addEventListener('fullscreenchange', () => {
+      const isFullscreen = !!document.fullscreenElement;
+      log(`🖥️ Fullscreen changed: ${isFullscreen ? 'ENTERED' : 'EXITED'}`);
+    });
+  </script>
+</body>
+</html>
