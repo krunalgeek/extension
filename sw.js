@@ -71,31 +71,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResp) => {
         sendResp({ ok: true });
         break;
 
-      case "START_CAPTURE":
-        // Let user choose Screen/Window/Tab, return streamId for page (optional use).
-        chrome.desktopCapture.chooseDesktopMedia(
-          ["screen", "window", "tab"],
-          sender.tab && sender.tab.windowId,
-          (streamId) => {
-            if (!streamId) {
-              postEvent("SCREEN_SHARE_ERROR", { reason: "user_cancelled" });
-              sendResp({ ok: false });
-              return;
-            }
-            postEvent("SCREEN_SHARE_STARTED", { chooser: true });
-            sendResp({ ok: true, streamId });
-          }
-        );
-        // return true to keep the channel open for async sendResp
-        return true;
-
-      case "STOP_CAPTURE":
-        // We can't force-stop a page's getDisplayMedia stream from here,
-        // but we can flag intent or stop tabCapture (if we had started it).
-        postEvent("SCREEN_SHARE_STOPPED", { via: "ext_request" });
-        sendResp({ ok: true });
-        break;
-
       case "GET_STATUS":
         {
           const capturedTabs = await chrome.tabCapture.getCapturedTabs();
@@ -105,6 +80,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResp) => {
 
           sendResp({
             ok: true,
+            isActive: CONFIG.isActive,
+            screenShareActive: CONFIG.screenShareActive,
+            requireScreenShare: CONFIG.requireScreenShare,
             capturedCount: capturedTabs.length,
             activeUrl: activeTab?.url || "",
             windowFocused: win.focused
@@ -127,6 +105,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResp) => {
   return true;
 });
 
+// MANDATORY: Always track window focus (core proctoring feature)
 // ------------- Boot: load stored config -------------
 chrome.runtime.onInstalled.addListener(async () => {
   const saved = (await chrome.storage.local.get("CONFIG")).CONFIG;
@@ -134,28 +113,38 @@ chrome.runtime.onInstalled.addListener(async () => {
 });
 
 // ------------- Focus / Tab Switch / Navigation listeners -------------
+// MANDATORY: Always track window focus (core proctoring feature)
 chrome.windows.onFocusChanged.addListener(async (winId) => {
   if (winId === chrome.windows.WINDOW_ID_NONE) {
-    postEvent("VISIBILITY_HIDDEN", { reason: "window_blur" });
+    postEvent("VISIBILITY_HIDDEN", { reason: "window_blur", severity: "high" });
   } else {
     postEvent("FOCUS_RETURN", { reason: "window_focus" });
   }
 });
 
+// MANDATORY: Track tab switches (critical for detecting cheating)
 chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
   try {
-    const tab = await chrome.tabs.get(tabId);
-    if (!tab || !tab.url) return;
-    const exam = isExamUrl(tab.url);
-    postEvent("KEY_SHORTCUT", { activatedTab: tab.url, examTab: exam, reason: "tab_activated" });
+    const taam = isExamUrl(tab.url);
+    postEvent("KEY_SHORTCUT", { 
+      activatedTab: tab.url, 
+      examTab: exam, 
+      reason: "tab_activated",
+      severity: exam ? "low" : "high"
+    });
   } catch {}
 });
 
+// MANDATORY: Track navigation away from exam (critical violation)
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (!changeInfo.url) return;
   const navigatedAway = !isExamUrl(changeInfo.url);
   if (navigatedAway) {
-    postEvent("TAB_BLUR", { url: changeInfo.url, reason: "navigated_away" });
+    postEvent("TAB_BLUR", { 
+      url: changeInfo.url, 
+      reason: "navigated_away",
+      severity: "critical"
+    });
   }
 });
 
@@ -170,18 +159,23 @@ async function probeLoop() {
   }
   
   try {
-    // 1) Other captured tabs in Chrome?
+    // 1) Check for multiple screen captures (multi-monitor detection)
     const caps = await chrome.tabCapture.getCapturedTabs();
     if ((caps?.length || 0) > 1) {
-      postEvent("SECOND_DISPLAY_SUSPECTED", { reason: "multiple_tab_captures", count: caps.length });
+      postEvent("SECOND_DISPLAY_SUSPECTED", { 
+        reason: "multiple_tab_captures", 
+        count: caps.length,
+        severity: "high"
+      });
     }
 
-    // 2) Check if screen share is still active
+    // 2) Heartbeat - prove extension is alive and candidate is still present
     const win = await chrome.windows.getCurrent({ populate: true });
     if (win.focused) {
-      postEvent("HEARTBEAT", { timestamp: Date.now() });
+      postEvent("HEARTBEAT", { 
+        timestamp: Date.now()
+      });
     }
-
   } catch (e) {
     // ignore
   } finally {
@@ -195,5 +189,3 @@ async function probeLoop() {
 }
 
 // Don't auto-start probe loop on startup - wait for SET_CONFIG with active assessment
-// chrome.runtime.onStartup.addListener(probeLoop);
-// probeLoop();
